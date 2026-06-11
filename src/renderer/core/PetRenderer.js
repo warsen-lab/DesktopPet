@@ -11,9 +11,9 @@ export class PetRenderer {
   // 窗口尺寸变化时调用。
   resize(width, height) {}
 
-  // 每帧三步：清空 → 画遮挡 → 画宠物（state 为模拟快照的本屏局部坐标版）。
+  // 每帧三步：清空 → 画大便 → 画宠物（state 为模拟快照的本屏局部坐标版）。
   clear() {}
-  drawOcclusions(list) {}
+  drawPoops(list) {}
   drawPet(state) {}
 
   // 释放资源。

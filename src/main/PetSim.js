@@ -1,15 +1,10 @@
 // 宠物模拟（主进程，CommonJS）。全局虚拟桌面坐标(DIP)，各显示器窗口减自身偏移绘制。
-// 状态机：跟随鼠标 / 静止超时后原地休息 / 拖拽抛掷 / 落地生气 / 走去吃图标。
+// 状态机：跟随鼠标 / 静止超时原地休息 / 拖拽抛掷 / 落地生气 / 拉屎（生气后 + 随机定时）。
+// 关键：钳制与落地都按「宠物当前所在那块屏的工作区」，避免越过屏幕可视边缘被裁。
 
 const S = {
-  WALK: 'walk',   // 走向光标
-  RUN: 'run',     // 远距离快跑
-  STAND: 'stand', // 到达光标附近、警觉站立（休息超时前）
-  REST: 'rest',   // 静止超时后趴下休息
-  DRAG: 'drag',   // 被拖拽
-  FALL: 'fall',   // 松手后自由落体
-  ANGRY: 'angry', // 落地后生气
-  EAT: 'eat'      // 走向图标并吃掉
+  WALK: 'walk', RUN: 'run', STAND: 'stand', REST: 'rest',
+  DRAG: 'drag', FALL: 'fall', ANGRY: 'angry', POOP: 'poop'
 };
 
 const COMFORT_RADIUS = 90;
@@ -18,18 +13,20 @@ const WALK_SPEED = 150;
 const RUN_SPEED = 520;
 const GRAVITY = 2400;
 const BOUNCE = 0.45;
-const CURSOR_MOVE_EPS = 3;     // 光标位移超过此值才算「在动」
-const ANGRY_SECONDS = 1.6;     // 生气持续时间
-const EAT_SPEED = 260;         // 走去吃图标的速度
+const CURSOR_MOVE_EPS = 3;
+const ANGRY_SECONDS = 1.4;
+const POOP_SECONDS = 1.3;       // 蹲下拉屎的持续时间
 
 class PetSim {
-  // world:{minX,minY,maxX,maxY} 虚拟桌面外接矩形；start:{x,y}；
-  // opts:{ idleRestSeconds, primary:{x,y,width,height} }
+  // world:{minX,minY,maxX,maxY}; start:{x,y};
+  // opts:{ idleRestSeconds, displays:[workArea...], poopMinSec, poopMaxSec }
   constructor(world, start, opts = {}) {
     this.world = world;
-    this.primary = opts.primary || { x: 0, y: 0, width: 1920, height: 1080 };
+    this.displays = opts.displays || [];      // 各屏工作区 [{x,y,width,height}]
     this.idleRestSeconds = opts.idleRestSeconds ?? 30;
-    this.half = { w: 47, h: 75 };   // 精灵半宽高，主进程按清单设置，用于钳制不出屏
+    this.poopMinSec = opts.poopMinSec ?? 3600;
+    this.poopMaxSec = opts.poopMaxSec ?? 7200;
+    this.half = { w: 47, h: 75 };
 
     this.x = start.x; this.y = start.y;
     this.vx = 0; this.vy = 0;
@@ -44,18 +41,38 @@ class PetSim {
     this.restTimer = 0;
     this.lastCursor = { x: start.x, y: start.y };
     this.angryTimer = 0;
-    this.eatTarget = null;
-    this.eatRequest = null;         // 主进程消费：{x,y,w,h}
+    this.poopTimer = 0;
+    this.poopRequest = null;       // 主进程消费：{x,y}
+    this._resetPoopCountdown();
   }
 
   setWorld(world) { this.world = world; }
   setHalf(w, h) { this.half = { w, h }; }
+  setDisplays(areas) { this.displays = areas || []; }
   setConfig(opts = {}) {
     if (opts.idleRestSeconds != null) this.idleRestSeconds = opts.idleRestSeconds;
-    if (opts.primary) this.primary = opts.primary;
+    if (opts.poopMinSec != null) this.poopMinSec = opts.poopMinSec;
+    if (opts.poopMaxSec != null) this.poopMaxSec = opts.poopMaxSec;
   }
 
-  get floorY() { return this.world.maxY - this.half.h - 4; }
+  _resetPoopCountdown() {
+    const span = Math.max(1, this.poopMaxSec - this.poopMinSec);
+    this.poopCountdown = this.poopMinSec + Math.random() * span;
+  }
+
+  // 宠物当前所在那块屏的工作区（不含任务栏）；不在任何屏内则取最近的。
+  _areaAt(x, y) {
+    let best = null, bestD = Infinity;
+    for (const a of this.displays) {
+      if (x >= a.x && x < a.x + a.width && y >= a.y && y < a.y + a.height) return a;
+      const cx = Math.max(a.x, Math.min(a.x + a.width, x));
+      const cy = Math.max(a.y, Math.min(a.y + a.height, y));
+      const d = (cx - x) ** 2 + (cy - y) ** 2;
+      if (d < bestD) { bestD = d; best = a; }
+    }
+    if (best) return best;
+    return { x: this.world.minX, y: this.world.minY, width: this.world.maxX - this.world.minX, height: this.world.maxY - this.world.minY };
+  }
 
   startDrag(cx, cy) {
     this.dragging = true;
@@ -68,7 +85,7 @@ class PetSim {
   endDrag() {
     if (!this.dragging) return;
     this.dragging = false;
-    this.state = S.FALL;   // 松手 → 自由落体
+    this.state = S.FALL;
   }
 
   update(dt, cursor) {
@@ -85,7 +102,7 @@ class PetSim {
       switch (this.state) {
         case S.FALL: this._fall(dt); break;
         case S.ANGRY: this._angry(dt); break;
-        case S.EAT: this._eat(dt); break;
+        case S.POOP: this._poop(dt); break;
         default: this._normal(dt, cursor, cursorMoving); break;
       }
     }
@@ -107,15 +124,16 @@ class PetSim {
   }
 
   _fall(dt) {
+    const a = this._areaAt(this.x, this.y);
+    const floorY = a.y + a.height - this.half.h - 4;
     this.vy += GRAVITY * dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.vx *= 0.98;
-    const { minX, maxX } = this.world;
-    if (this.x < minX + this.half.w) { this.x = minX + this.half.w; this.vx = Math.abs(this.vx) * BOUNCE; }
-    if (this.x > maxX - this.half.w) { this.x = maxX - this.half.w; this.vx = -Math.abs(this.vx) * BOUNCE; }
-    if (this.y >= this.floorY) {
-      this.y = this.floorY;
+    if (this.x < a.x + this.half.w) { this.x = a.x + this.half.w; this.vx = Math.abs(this.vx) * BOUNCE; }
+    if (this.x > a.x + a.width - this.half.w) { this.x = a.x + a.width - this.half.w; this.vx = -Math.abs(this.vx) * BOUNCE; }
+    if (this.y >= floorY) {
+      this.y = floorY;
       if (Math.abs(this.vy) > 120) { this.vy = -this.vy * BOUNCE; }
       else { this.vy = 0; this.vx = 0; this.state = S.ANGRY; this.angryTimer = ANGRY_SECONDS; }
     }
@@ -124,33 +142,25 @@ class PetSim {
   _angry(dt) {
     this.vx *= 0.8; this.vy *= 0.8;
     this.angryTimer -= dt;
-    if (this.angryTimer <= 0) {
-      this.eatTarget = this._nearestIconCell();
-      this.state = S.EAT;
-    }
+    if (this.angryTimer <= 0) { this.state = S.POOP; this.poopTimer = POOP_SECONDS; } // 被摔后气得拉屎
   }
 
-  _eat(dt) {
-    if (!this.eatTarget) { this.state = S.STAND; return; }
-    const dx = this.eatTarget.x - this.x;
-    const dy = this.eatTarget.y - this.y;
-    const d = Math.hypot(dx, dy);
-    if (d < 8) {
-      // 到位 → 请求主进程在此处生成一个可还原的遮挡（吃掉图标）。
-      this.eatRequest = { x: this.eatTarget.x, y: this.eatTarget.y, w: 72, h: 84 };
-      this.eatTarget = null;
+  _poop(dt) {
+    this.vx = 0; this.vy = 0;
+    this.poopTimer -= dt;
+    if (this.poopTimer <= 0) {
+      // 在屁股位置（脚下偏后）落下一坨。
+      this.poopRequest = { x: this.x - this.facing * 16, y: this.y + this.half.h - 12 };
       this.state = S.STAND;
-    } else {
-      this.state = S.EAT;
-      this.vx = (dx / d) * EAT_SPEED;
-      this.vy = (dy / d) * EAT_SPEED;
-      this.x += this.vx * dt;
-      this.y += this.vy * dt;
+      this._resetPoopCountdown();
     }
   }
 
   _normal(dt, cursor, cursorMoving) {
-    // 静止超时 → 原地趴下休息；光标一动立刻醒。
+    // 随机定时拉屎：倒计时到点且当前空闲（非拖拽/下落）就蹲下。
+    this.poopCountdown -= dt;
+    if (this.poopCountdown <= 0) { this.state = S.POOP; this.poopTimer = POOP_SECONDS; return; }
+
     if (!cursorMoving && this.restTimer >= this.idleRestSeconds) {
       this.vx *= 0.8; this.vy *= 0.8;
       this.state = S.REST;
@@ -168,29 +178,17 @@ class PetSim {
       this.x += ux * step; this.y += uy * step;
     } else {
       this.vx *= 0.8; this.vy *= 0.8;
-      this.state = S.STAND;   // 到达、警觉站立（未到休息超时）
+      this.state = S.STAND;
     }
   }
 
-  // 找离宠物最近的「桌面图标格子」（主屏左上若干列），作为吃的目标。
-  _nearestIconCell() {
-    const gx0 = this.primary.x + 44, gy0 = this.primary.y + 36;
-    const cellW = 80, cellH = 92, cols = 3, rows = Math.max(1, Math.floor((this.primary.height - 80) / cellH));
-    let col = Math.round((this.x - gx0) / cellW);
-    let row = Math.round((this.y - gy0) / cellH);
-    col = Math.max(0, Math.min(cols - 1, col));
-    row = Math.max(0, Math.min(rows - 1, row));
-    return { x: gx0 + col * cellW, y: gy0 + row * cellH };
-  }
-
   _clampToScreen() {
-    const { minX, minY, maxX, maxY } = this.world;
-    this.x = Math.max(minX + this.half.w, Math.min(maxX - this.half.w, this.x));
-    this.y = Math.max(minY + this.half.h, Math.min(maxY - this.half.h, this.y));
+    const a = this._areaAt(this.x, this.y);
+    this.x = Math.max(a.x + this.half.w, Math.min(a.x + a.width - this.half.w, this.x));
+    this.y = Math.max(a.y + this.half.h, Math.min(a.y + a.height - this.half.h, this.y));
   }
 
-  // 取出并清空待处理的「吃图标」请求。
-  takeEatRequest() { const r = this.eatRequest; this.eatRequest = null; return r; }
+  takePoopRequest() { const r = this.poopRequest; this.poopRequest = null; return r; }
 
   get snapshot() {
     return {

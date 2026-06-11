@@ -1,4 +1,6 @@
 {
   "idleRestSeconds": 30,
-  "_comment": "idleRestSeconds: 鼠标静止多少秒后宠物原地趴下休息（默认 30）。改完重启生效。"
+  "poopMinMinutes": 60,
+  "poopMaxMinutes": 120,
+  "_comment": "idleRestSeconds: 鼠标静止多少秒后宠物趴下休息（默认30）。poopMin/MaxMinutes: 随机拉屎间隔的分钟下限/上限（默认60-120即1-2小时）。改完重启生效。"
 }

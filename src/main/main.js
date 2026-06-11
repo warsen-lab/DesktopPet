@@ -1,7 +1,7 @@
 // Electron 主进程（多显示器版）：
 //  - 每块显示器一个透明 / 置顶 / 点击穿透的覆盖窗口（Windows 透明窗口无法可靠跨多屏）。
 //  - 宠物模拟(PetSim)在主进程统一运行（全局虚拟桌面坐标），每帧广播快照给所有窗口绘制。
-//  - 悬停/拖拽判定、落地吃图标产生的「可还原遮挡」、托盘菜单都在主进程。
+//  - 悬停/拖拽判定、拉屎产生的「可清理大便」、托盘菜单都在主进程。
 
 const { app, BrowserWindow, screen, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
@@ -15,14 +15,18 @@ let loopTimer = null;
 let lastT = 0;
 let tray = null;
 let spriteHalf = { w: 47, h: 75 };
-let occlusions = [];   // 被「吃掉」的图标遮挡：[{id,x,y,w,h}]（全局坐标）
-let occId = 1;
+let poops = [];        // 地上的大便：[{id,x,y}]（全局坐标）
+let poopId = 1;
 
 function loadConfig() {
   try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config.json'), 'utf-8'));
-    return { idleRestSeconds: Number(cfg.idleRestSeconds) || 30 };
-  } catch { return { idleRestSeconds: 30 }; }
+    const c = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config.json'), 'utf-8'));
+    return {
+      idleRestSeconds: Number(c.idleRestSeconds) || 30,
+      poopMinSec: (Number(c.poopMinMinutes) || 60) * 60,
+      poopMaxSec: (Number(c.poopMaxMinutes) || 120) * 60
+    };
+  } catch { return { idleRestSeconds: 30, poopMinSec: 3600, poopMaxSec: 7200 }; }
 }
 
 // 读取精灵清单（双动画集，含各帧 file:// URL）。无则 null。
@@ -53,13 +57,18 @@ function worldBounds() {
   return { minX, minY, maxX, maxY };
 }
 
+// 各屏「工作区」（不含任务栏）——宠物钳制与落地用，保证不越过可视窗口被裁。
+function workAreas() {
+  return screen.getAllDisplays().map(d => ({ ...d.workArea }));
+}
+
 function pointInBounds(p, b) {
   return p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
 }
 
-function broadcastOcclusions() {
+function broadcastPoops() {
   for (const w of windows) {
-    if (!w.win.isDestroyed()) w.win.webContents.send('occlusions', occlusions);
+    if (!w.win.isDestroyed()) w.win.webContents.send('poops', poops);
   }
 }
 
@@ -93,7 +102,7 @@ function createWindows() {
     const entry = { win, display: d, offsetX: d.bounds.x, offsetY: d.bounds.y };
     win.webContents.on('did-finish-load', () => {
       win.webContents.send('init', { offsetX: entry.offsetX, offsetY: entry.offsetY, manifest });
-      win.webContents.send('occlusions', occlusions);
+      win.webContents.send('poops', poops);
     });
     windows.push(entry);
   }
@@ -103,8 +112,11 @@ function startLoop() {
   const world = worldBounds();
   const primary = screen.getPrimaryDisplay().bounds;
   const cfg = loadConfig();
-  sim = new PetSim(world, { x: primary.x + primary.width / 2, y: primary.y + primary.height / 2 },
-    { primary, idleRestSeconds: cfg.idleRestSeconds });
+  sim = new PetSim(world, { x: primary.x + primary.width / 2, y: primary.y + primary.height / 2 }, {
+    idleRestSeconds: cfg.idleRestSeconds,
+    poopMinSec: cfg.poopMinSec, poopMaxSec: cfg.poopMaxSec,
+    displays: workAreas()
+  });
   sim.setHalf(spriteHalf.w / 0.9, spriteHalf.h / 0.9);
   lastT = Date.now();
 
@@ -116,12 +128,9 @@ function startLoop() {
     const cursor = screen.getCursorScreenPoint();
     sim.update(dt, cursor);
 
-    // 吃图标：到位后生成一个可还原遮挡。
-    const eat = sim.takeEatRequest();
-    if (eat) {
-      occlusions.push({ id: occId++, ...eat });
-      broadcastOcclusions();
-    }
+    // 拉屎：在屁股位置落一坨大便。
+    const poop = sim.takePoopRequest();
+    if (poop) { poops.push({ id: poopId++, ...poop }); broadcastPoops(); }
 
     const snap = sim.snapshot;
     const hover = Math.abs(cursor.x - snap.x) < spriteHalf.w &&
@@ -137,10 +146,10 @@ function startLoop() {
   }, 16);
 }
 
-function restoreIcons() {
-  if (!occlusions.length) return;
-  occlusions = [];
-  broadcastOcclusions();
+function cleanPoops() {
+  if (!poops.length) return;
+  poops = [];
+  broadcastPoops();
 }
 
 ipcMain.on('drag-start', () => {
@@ -149,7 +158,7 @@ ipcMain.on('drag-start', () => {
   sim.startDrag(c.x, c.y);
 });
 ipcMain.on('drag-end', () => { if (sim) sim.endDrag(); });
-ipcMain.on('restore-icons', restoreIcons);
+ipcMain.on('clean-poops', cleanPoops);
 
 function createTray() {
   try {
@@ -159,7 +168,7 @@ function createTray() {
     tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
     tray.setToolTip('桌面宠物');
     const menu = Menu.buildFromTemplate([
-      { label: '还原被吃掉的图标', click: restoreIcons },
+      { label: '清理大便', click: cleanPoops },
       { type: 'separator' },
       { label: '退出', click: () => app.quit() }
     ]);
@@ -168,7 +177,7 @@ function createTray() {
 }
 
 function rebuild() {
-  if (sim) { sim.setWorld(worldBounds()); sim.setConfig({ primary: screen.getPrimaryDisplay().bounds }); }
+  if (sim) { sim.setWorld(worldBounds()); sim.setDisplays(workAreas()); }
   createWindows();
 }
 

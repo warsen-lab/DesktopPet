@@ -14,7 +14,7 @@ renderer.init(canvas, w, h);
 
 let offsetX = 0, offsetY = 0;
 let snap = null;
-let occlusions = [];
+let poops = [];
 
 window.petBridge?.onInit?.((data) => {
   offsetX = data.offsetX || 0;
@@ -23,7 +23,7 @@ window.petBridge?.onInit?.((data) => {
 });
 
 window.petBridge?.onState?.((s) => { snap = s; });
-window.petBridge?.onOcclusions?.((list) => { occlusions = list || []; });
+window.petBridge?.onPoops?.((list) => { poops = list || []; });
 
 // 拖拽：窗口仅在「光标压在宠物身上」时可交互，故这里按下≈按在宠物上。
 window.addEventListener('mousedown', (e) => {
@@ -32,10 +32,10 @@ window.addEventListener('mousedown', (e) => {
 window.addEventListener('mouseup', (e) => {
   if (e.button === 0) window.petBridge?.dragEnd?.();
 });
-// 右键宠物 → 还原所有被吃掉的图标。
+// 右键宠物 → 清理所有大便。
 window.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  window.petBridge?.restoreIcons?.();
+  window.petBridge?.cleanPoops?.();
 });
 
 window.addEventListener('resize', () => {
@@ -45,9 +45,9 @@ window.addEventListener('resize', () => {
 
 function loop() {
   renderer.clear();
-  // 遮挡（被吃图标）：全局 → 本屏局部。
-  if (occlusions.length) {
-    renderer.drawOcclusions(occlusions.map(o => ({ ...o, x: o.x - offsetX, y: o.y - offsetY })));
+  // 大便：全局 → 本屏局部。
+  if (poops.length) {
+    renderer.drawPoops(poops.map(p => ({ ...p, x: p.x - offsetX, y: p.y - offsetY })));
   }
   if (snap) {
     renderer.drawPet({ ...snap, x: snap.x - offsetX, y: snap.y - offsetY });

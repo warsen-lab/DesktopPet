@@ -1,17 +1,55 @@
 {
   "name": "desktop-pet",
-  "version": "0.1.0",
-  "description": "桌面宠物 — 透明置顶窗口里的桌宠，跟随/躲避鼠标，可拖拽。渲染层可替换（2D canvas / 3D three.js）。",
+  "version": "0.2.0",
+  "description": "桌面宠物 — 透明置顶窗口里的桌宠，用你家宠物的真实照片做形象。跟随鼠标、休息、拉屎搞破坏，多显示器支持。",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win"
   },
   "license": "MIT",
   "devDependencies": {
-    "electron": "^33.0.0"
-  },
-  "dependencies": {
     "@imgly/background-removal-node": "^1.4.5",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "sharp": "^0.35.0"
+  },
+  "build": {
+    "appId": "com.warsenlab.desktoppet",
+    "productName": "DesktopPet",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/cat",
+        "to": "assets/cat",
+        "filter": [
+          "*.png",
+          "manifest.json"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "DesktopPet-Setup-${version}.${ext}"
+    }
   }
 }

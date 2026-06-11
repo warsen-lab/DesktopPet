@@ -60,20 +60,20 @@
 
 ## 四、把帧导入程序
 
-1. 把每套动作的透明 PNG 按命名放进 `assets/cat/`：
+> 推荐路径：托盘 →「**宠物素材工坊**」窗口，里面有每个动作的拍摄角度示意图、
+> 「打开素材文件夹」和「重新扫描并应用」按钮，全程不需要命令行。
+
+1. 把每套动作的透明 PNG 按命名放进**用户素材目录**（工坊窗口可一键打开）：
    ```
-   assets/cat/walk_00.png … walk_11.png
-   assets/cat/rest_00.png … rest_09.png
+   %APPDATA%/desktop-pet/pets/cat/walk_00.png … walk_11.png
+   %APPDATA%/desktop-pet/pets/cat/rest_00.png … rest_09.png
    ```
    （可保留现有的 `idle_*.png` 作为 rest 的回退，或删掉换成 `rest_*`。）
+   该目录与应用安装目录分离，**升级/重装软件不会覆盖你的素材**。
 
-2. 自动生成清单：
-   ```
-   node tools/make-manifest.js
-   ```
-   它会扫描所有 `<动作>_<序号>.png`，写好 `manifest.json`。
+2. 在工坊窗口点「**重新扫描并应用**」——立即生效（含托盘图标），无需重启。
 
-3. 重启程序：`npm start`，即可看到新素材。
+开发者也可以改仓库内置种子素材 `assets/cat/` 并运行 `node tools/make-manifest.js`（它只影响新用户首次启动播种的默认素材）。
 
 > 若帧带背景需要抠图，可复用现成流程：`node tools/01-remove-bg.js <输入帧目录> <输出目录>`。
 

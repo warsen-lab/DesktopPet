@@ -1,15 +1,17 @@
 // Electron 主进程（多显示器版）：
 //  - 每块显示器一个透明 / 置顶 / 点击穿透的覆盖窗口（Windows 透明窗口无法可靠跨多屏）。
 //  - 宠物模拟(PetSim)在主进程统一运行（全局虚拟桌面坐标），每帧广播快照给所有窗口绘制。
-//  - 悬停/拖拽判定、拉屎产生的「可清理大便」、托盘菜单都在主进程。
+//  - 素材与配置都放 userData（与安装目录分离，升级不丢用户自定义）：见 assets.js / settings.js。
+//  - 托盘图标取用户素材帧；菜单含 设置 / 素材工坊 / 清理大便；启动后台检查新版本（updater.js）。
 
-const { app, BrowserWindow, screen, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const { pathToFileURL } = require('url');
 const { PetSim } = require('./PetSim');
+const assets = require('./assets');
+const { loadSettings, saveSettings, toSimConfig } = require('./settings');
+const updater = require('./updater');
 
-let windows = [];      // [{ win, display, offsetX, offsetY }]
+let windows = [];      // 覆盖窗口 [{ win, display, offsetX, offsetY }]
 let sim = null;
 let loopTimer = null;
 let lastT = 0;
@@ -17,34 +19,24 @@ let tray = null;
 let spriteHalf = { w: 47, h: 75 };
 let poops = [];        // 地上的大便：[{id,x,y}]（全局坐标）
 let poopId = 1;
+let settings = null;
+let manifest = null;
+let settingsWin = null;
+let guideWin = null;
 
-function loadConfig() {
-  try {
-    const c = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config.json'), 'utf-8'));
-    return {
-      idleRestSeconds: Number(c.idleRestSeconds) || 30,
-      poopMinSec: (Number(c.poopMinMinutes) || 60) * 60,
-      poopMaxSec: (Number(c.poopMaxMinutes) || 120) * 60
-    };
-  } catch { return { idleRestSeconds: 30, poopMinSec: 3600, poopMaxSec: 7200 }; }
+// 单实例：第二次启动只把设置窗口拉起来。
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => openSettingsWindow());
 }
 
-// 读取精灵清单（双动画集，含各帧 file:// URL）。无则 null。
-function loadSpriteManifest() {
-  try {
-    const catDir = path.join(__dirname, '..', '..', 'assets', 'cat');
-    const m = JSON.parse(fs.readFileSync(path.join(catDir, 'manifest.json'), 'utf-8'));
-    const sets = {};
-    for (const [name, s] of Object.entries(m.sets)) {
-      const frames = [];
-      for (let i = 0; i < s.frameCount; i++) {
-        const file = s.pattern.replace('%02d', String(i).padStart(2, '0'));
-        frames.push(pathToFileURL(path.join(catDir, file)).href);
-      }
-      sets[name] = { frames, width: s.width, height: s.height, fps: s.fps || 12 };
-    }
-    return { sets };
-  } catch { return null; }
+function applyManifestSize() {
+  if (!manifest) return;
+  let mw = 0, mh = 0;
+  for (const s of Object.values(manifest.sets)) { mw = Math.max(mw, s.width); mh = Math.max(mh, s.height); }
+  spriteHalf = { w: (mw / 2) * 0.9, h: (mh / 2) * 0.9 };
+  if (sim) sim.setHalf(mw / 2, mh / 2);
 }
 
 function worldBounds() {
@@ -76,14 +68,6 @@ function createWindows() {
   for (const w of windows) { if (!w.win.isDestroyed()) w.win.destroy(); }
   windows = [];
 
-  const manifest = loadSpriteManifest();
-  if (manifest) {
-    let mw = 0, mh = 0;
-    for (const s of Object.values(manifest.sets)) { mw = Math.max(mw, s.width); mh = Math.max(mh, s.height); }
-    spriteHalf = { w: (mw / 2) * 0.9, h: (mh / 2) * 0.9 };
-    if (sim) sim.setHalf(mw / 2, mh / 2);
-  }
-
   for (const d of screen.getAllDisplays()) {
     const win = new BrowserWindow({
       x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height,
@@ -111,10 +95,8 @@ function createWindows() {
 function startLoop() {
   const world = worldBounds();
   const primary = screen.getPrimaryDisplay().bounds;
-  const cfg = loadConfig();
   sim = new PetSim(world, { x: primary.x + primary.width / 2, y: primary.y + primary.height / 2 }, {
-    idleRestSeconds: cfg.idleRestSeconds,
-    poopMinSec: cfg.poopMinSec, poopMaxSec: cfg.poopMaxSec,
+    ...toSimConfig(settings),
     displays: workAreas()
   });
   sim.setHalf(spriteHalf.w / 0.9, spriteHalf.h / 0.9);
@@ -152,6 +134,49 @@ function cleanPoops() {
   broadcastPoops();
 }
 
+// ——— 素材热重载：工坊窗口「重新扫描」后调用 ———
+function reloadAssets() {
+  const rebuilt = assets.rebuildManifest();
+  manifest = assets.loadSpriteManifest();
+  applyManifestSize();
+  for (const w of windows) {
+    if (!w.win.isDestroyed()) {
+      w.win.webContents.send('init', { offsetX: w.offsetX, offsetY: w.offsetY, manifest });
+    }
+  }
+  refreshTrayIcon();
+  return { ok: !!manifest, errors: rebuilt?.errors || [], status: assets.assetStatus() };
+}
+
+// ——— 普通 UI 窗口（设置 / 素材工坊）———
+function uiWindow(file, opts) {
+  const win = new BrowserWindow({
+    width: opts.width, height: opts.height,
+    resizable: true, minimizable: true, maximizable: false,
+    autoHideMenuBar: true, title: opts.title,
+    icon: assets.windowIcon() || undefined,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-ui.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: false
+    }
+  });
+  win.loadFile(path.join(__dirname, '..', 'ui', file));
+  return win;
+}
+
+function openSettingsWindow() {
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = uiWindow('settings.html', { width: 480, height: 640, title: '桌面宠物 — 设置' });
+  settingsWin.on('closed', () => { settingsWin = null; });
+}
+
+function openGuideWindow() {
+  if (guideWin && !guideWin.isDestroyed()) { guideWin.show(); guideWin.focus(); return; }
+  guideWin = uiWindow('guide.html', { width: 860, height: 760, title: '桌面宠物 — 素材工坊' });
+  guideWin.on('closed', () => { guideWin = null; });
+}
+
+// ——— IPC：覆盖窗口（拖拽/清理）———
 ipcMain.on('drag-start', () => {
   if (!sim) return;
   const c = screen.getCursorScreenPoint();
@@ -160,19 +185,70 @@ ipcMain.on('drag-start', () => {
 ipcMain.on('drag-end', () => { if (sim) sim.endDrag(); });
 ipcMain.on('clean-poops', cleanPoops);
 
+// ——— IPC：设置 / 素材工坊窗口 ———
+ipcMain.handle('ui:get-settings', () => settings);
+ipcMain.handle('ui:save-settings', (_e, s) => {
+  settings = saveSettings({ ...settings, ...s });
+  if (sim) sim.setConfig(toSimConfig(settings));
+  return settings;
+});
+ipcMain.handle('ui:get-autolaunch', () => app.getLoginItemSettings().openAtLogin);
+ipcMain.handle('ui:set-autolaunch', (_e, enabled) => {
+  app.setLoginItemSettings({ openAtLogin: !!enabled });
+  return app.getLoginItemSettings().openAtLogin;
+});
+ipcMain.handle('ui:get-version', () => ({
+  version: app.getVersion(),
+  packaged: app.isPackaged,
+  latest: updater.getLatest()
+}));
+ipcMain.handle('ui:check-update', async () => {
+  const u = await updater.checkForUpdate();
+  if (u) refreshTrayMenu();
+  return u;
+});
+ipcMain.handle('ui:open-download', () => { updater.openDownloadPage(); });
+ipcMain.handle('ui:open-pets-folder', () => shell.openPath(assets.petsDir()));
+ipcMain.handle('ui:get-asset-status', () => assets.assetStatus());
+ipcMain.handle('ui:rescan-assets', () => reloadAssets());
+
+// ——— 托盘 ———
+function refreshTrayIcon() {
+  if (!tray) return;
+  try {
+    const img = assets.trayIcon();
+    tray.setImage(img || nativeImage.createEmpty());
+  } catch { /* 托盘失败不致命 */ }
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const latest = updater.getLatest();
+  const items = [];
+  if (latest) {
+    items.push(
+      { label: `有新版本 v${latest.version}，点击下载`, click: () => updater.openDownloadPage() },
+      { type: 'separator' }
+    );
+  }
+  items.push(
+    { label: '设置', click: openSettingsWindow },
+    { label: '宠物素材工坊', click: openGuideWindow },
+    { type: 'separator' },
+    { label: '清理大便', click: cleanPoops },
+    { type: 'separator' },
+    { label: `当前版本 v${app.getVersion()}`, enabled: false },
+    { label: '退出', click: () => app.quit() }
+  );
+  tray.setContextMenu(Menu.buildFromTemplate(items));
+}
+
 function createTray() {
   try {
-    const iconPath = path.join(__dirname, '..', '..', 'assets', 'cat', 'idle_00.png');
-    let img = nativeImage.createFromPath(iconPath);
-    if (!img.isEmpty()) img = img.resize({ width: 18, height: 18 });
-    tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
-    tray.setToolTip('桌面宠物');
-    const menu = Menu.buildFromTemplate([
-      { label: '清理大便', click: cleanPoops },
-      { type: 'separator' },
-      { label: '退出', click: () => app.quit() }
-    ]);
-    tray.setContextMenu(menu);
+    tray = new Tray(assets.trayIcon() || nativeImage.createEmpty());
+    tray.setToolTip(`桌面宠物 v${app.getVersion()}`);
+    tray.on('double-click', openSettingsWindow);
+    refreshTrayMenu();
   } catch { /* 托盘失败不致命 */ }
 }
 
@@ -182,9 +258,16 @@ function rebuild() {
 }
 
 app.whenReady().then(() => {
+  settings = loadSettings();
+  assets.ensurePetAssets();                 // 首启播种到 userData，已有用户素材绝不覆盖
+  manifest = assets.loadSpriteManifest();
+  applyManifestSize();
+
   startLoop();
   createWindows();
   createTray();
+  updater.startUpdateChecks(() => refreshTrayMenu());   // 发现新版 → 托盘菜单出现下载入口
+
   screen.on('display-added', rebuild);
   screen.on('display-removed', rebuild);
   screen.on('display-metrics-changed', rebuild);

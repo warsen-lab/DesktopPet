@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <title>桌面宠物 — 设置</title>
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body>
+  <h1>设置</h1>
+  <p class="sub">改动即时生效，并保存在你的用户目录里（升级软件不会丢失）。</p>
+
+  <div id="updateBanner" class="update-banner">
+    <span id="updateText"></span>
+    <button id="btnDownload" class="primary">去下载</button>
+  </div>
+
+  <div class="card">
+    <h2>通用</h2>
+    <div class="row">
+      <label for="autoLaunch">开机自动启动</label>
+      <input type="checkbox" id="autoLaunch" />
+      <span class="hint" id="autoLaunchHint"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>宠物行为</h2>
+    <div class="row">
+      <label for="idleRest">休息：静止多久趴下</label>
+      <input type="range" id="idleRest" min="5" max="300" step="5" />
+      <span class="val" id="idleRestVal"></span>
+    </div>
+    <div class="row">
+      <label for="poopMin">拉屎间隔下限</label>
+      <input type="range" id="poopMin" min="1" max="360" step="1" />
+      <span class="val" id="poopMinVal"></span>
+    </div>
+    <div class="row">
+      <label for="poopMax">拉屎间隔上限</label>
+      <input type="range" id="poopMax" min="2" max="720" step="1" />
+      <span class="val" id="poopMaxVal"></span>
+    </div>
+    <div class="row">
+      <label for="runSpeed">跑步速度</label>
+      <input type="range" id="runSpeed" min="200" max="900" step="10" />
+      <span class="val" id="runSpeedVal"></span>
+    </div>
+    <p class="hint">拉屎会在「下限~上限」之间随机一个时间点蹲下拉一坨；右键宠物或托盘菜单可清理。</p>
+  </div>
+
+  <div class="card">
+    <h2>关于</h2>
+    <div class="row">
+      <label>当前版本</label>
+      <span id="version">…</span>
+      <button id="btnCheck">检查更新</button>
+    </div>
+    <p class="hint" id="checkResult"></p>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

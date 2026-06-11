@@ -1,0 +1,72 @@
+/* 设置 / 素材工坊窗口共用样式 */
+:root {
+  --bg: #f7f5f1;
+  --card: #ffffff;
+  --ink: #3a3128;
+  --muted: #8c8174;
+  --line: #e6e0d6;
+  --accent: #e08c2a;
+  --accent-dark: #c4761b;
+  --good: #4a9e5c;
+  --warn: #c75c5c;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg); color: var(--ink);
+  font-size: 14px; line-height: 1.6;
+  padding: 18px;
+}
+h1 { font-size: 18px; margin-bottom: 4px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.row label { flex: 0 0 150px; }
+.row .val { flex: 0 0 84px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+input[type="range"] { flex: 1; accent-color: var(--accent); }
+input[type="number"] {
+  width: 84px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px;
+  font: inherit; background: #fff;
+}
+input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+button {
+  font: inherit; padding: 7px 16px; border-radius: 8px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink); cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent-dark); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-dark); color: #fff; }
+.hint { color: var(--muted); font-size: 12px; }
+.ok { color: var(--good); }
+.warn { color: var(--warn); }
+.update-banner {
+  display: none; background: #fdf3e4; border: 1px solid #f0d9b0; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.update-banner.show { display: flex; align-items: center; gap: 10px; }
+.update-banner span { flex: 1; }
+
+/* 素材工坊 */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 12px; }
+.pose {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.pose svg { width: 100%; height: 130px; background: #fcfbf8; border-radius: 8px; }
+.pose .name { font-weight: 600; }
+.pose .name code { color: var(--accent-dark); font-size: 13px; }
+.pose .angle { font-size: 12.5px; color: var(--muted); }
+.pose .status { font-size: 12.5px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.toolbar .spacer { flex: 1; }
+code.path {
+  background: #f1ece3; padding: 2px 6px; border-radius: 5px;
+  font-size: 12px; word-break: break-all; user-select: text;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; }

@@ -5,14 +5,16 @@ export class PetRenderer {
   // 初始化：传入 canvas 与逻辑尺寸（CSS 像素）。
   init(canvas, width, height) {}
 
+  // 由主进程把精灵清单（双动画集）传进来。
+  loadSprites(manifest) {}
+
   // 窗口尺寸变化时调用。
   resize(width, height) {}
 
-  // 每帧绘制。state 是 Pet 暴露的纯数据快照，dt 为距上一帧的秒数。
-  render(state, dt) {}
-
-  // 命中测试：屏幕点 (px,py) 是否落在宠物身上（用于判断能否拖拽 / 点击）。
-  hitTest(px, py, state) { return false; }
+  // 每帧三步：清空 → 画遮挡 → 画宠物（state 为模拟快照的本屏局部坐标版）。
+  clear() {}
+  drawOcclusions(list) {}
+  drawPet(state) {}
 
   // 释放资源。
   dispose() {}

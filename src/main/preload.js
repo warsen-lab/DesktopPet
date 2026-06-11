@@ -11,9 +11,13 @@ contextBridge.exposeInMainWorld('petBridge', {
   onInit: (cb) => ipcRenderer.on('init', (_e, data) => cb(data)),
   // 每帧的宠物状态快照（全局坐标）。
   onState: (cb) => ipcRenderer.on('state', (_e, snap) => cb(snap)),
+  // 被「吃掉」的图标遮挡列表（全局坐标），变化时推送。
+  onOcclusions: (cb) => ipcRenderer.on('occlusions', (_e, list) => cb(list)),
   // 上报拖拽开始/结束（光标坐标由主进程掌握）。
   dragStart: () => ipcRenderer.send('drag-start'),
   dragEnd: () => ipcRenderer.send('drag-end'),
+  // 还原所有被吃掉的图标（右键宠物时调用）。
+  restoreIcons: () => ipcRenderer.send('restore-icons'),
   // 临时调试。
   debug: (msg) => { try { fs.appendFileSync(DEBUG_LOG, msg + '\n'); } catch {} }
 });

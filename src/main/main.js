@@ -1,11 +1,9 @@
 // Electron 主进程（多显示器版）：
-//  - 每块显示器创建一个透明 / 置顶 / 点击穿透的覆盖窗口（Windows 上透明窗口无法可靠跨多屏，
-//    所以一屏一个窗口）。
-//  - 宠物模拟(PetSim)在主进程统一运行，用全局虚拟桌面坐标；每帧把快照广播给所有窗口，
-//    各窗口减去自己显示器的偏移来绘制 → 宠物可跨屏、混合 DPI 也正确。
-//  - 悬停判定与点击穿透切换也在主进程做（它掌握宠物坐标+全局光标+各屏边界）。
+//  - 每块显示器一个透明 / 置顶 / 点击穿透的覆盖窗口（Windows 透明窗口无法可靠跨多屏）。
+//  - 宠物模拟(PetSim)在主进程统一运行（全局虚拟桌面坐标），每帧广播快照给所有窗口绘制。
+//  - 悬停/拖拽判定、落地吃图标产生的「可还原遮挡」、托盘菜单都在主进程。
 
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -15,9 +13,19 @@ let windows = [];      // [{ win, display, offsetX, offsetY }]
 let sim = null;
 let loopTimer = null;
 let lastT = 0;
-let spriteHalf = { w: 46, h: 46 };
+let tray = null;
+let spriteHalf = { w: 47, h: 75 };
+let occlusions = [];   // 被「吃掉」的图标遮挡：[{id,x,y,w,h}]（全局坐标）
+let occId = 1;
 
-// 读取精灵清单（双动画集 idle/walk，含各帧 file:// URL）。无则 null。
+function loadConfig() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config.json'), 'utf-8'));
+    return { idleRestSeconds: Number(cfg.idleRestSeconds) || 30 };
+  } catch { return { idleRestSeconds: 30 }; }
+}
+
+// 读取精灵清单（双动画集，含各帧 file:// URL）。无则 null。
 function loadSpriteManifest() {
   try {
     const catDir = path.join(__dirname, '..', '..', 'assets', 'cat');
@@ -39,10 +47,8 @@ function worldBounds() {
   const ds = screen.getAllDisplays();
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const d of ds) {
-    minX = Math.min(minX, d.bounds.x);
-    minY = Math.min(minY, d.bounds.y);
-    maxX = Math.max(maxX, d.bounds.x + d.bounds.width);
-    maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
+    minX = Math.min(minX, d.bounds.x); minY = Math.min(minY, d.bounds.y);
+    maxX = Math.max(maxX, d.bounds.x + d.bounds.width); maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
   }
   return { minX, minY, maxX, maxY };
 }
@@ -51,17 +57,22 @@ function pointInBounds(p, b) {
   return p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
 }
 
+function broadcastOcclusions() {
+  for (const w of windows) {
+    if (!w.win.isDestroyed()) w.win.webContents.send('occlusions', occlusions);
+  }
+}
+
 function createWindows() {
-  // 销毁旧窗口（显示器变化时重建）。
   for (const w of windows) { if (!w.win.isDestroyed()) w.win.destroy(); }
   windows = [];
 
   const manifest = loadSpriteManifest();
   if (manifest) {
-    // 悬停判定用最大那套的尺寸，保证拖拽好点中。
     let mw = 0, mh = 0;
     for (const s of Object.values(manifest.sets)) { mw = Math.max(mw, s.width); mh = Math.max(mh, s.height); }
     spriteHalf = { w: (mw / 2) * 0.9, h: (mh / 2) * 0.9 };
+    if (sim) sim.setHalf(mw / 2, mh / 2);
   }
 
   for (const d of screen.getAllDisplays()) {
@@ -82,6 +93,7 @@ function createWindows() {
     const entry = { win, display: d, offsetX: d.bounds.x, offsetY: d.bounds.y };
     win.webContents.on('did-finish-load', () => {
       win.webContents.send('init', { offsetX: entry.offsetX, offsetY: entry.offsetY, manifest });
+      win.webContents.send('occlusions', occlusions);
     });
     windows.push(entry);
   }
@@ -90,7 +102,10 @@ function createWindows() {
 function startLoop() {
   const world = worldBounds();
   const primary = screen.getPrimaryDisplay().bounds;
-  sim = new PetSim(world, { x: primary.x + primary.width / 2, y: primary.y + primary.height / 2 });
+  const cfg = loadConfig();
+  sim = new PetSim(world, { x: primary.x + primary.width / 2, y: primary.y + primary.height / 2 },
+    { primary, idleRestSeconds: cfg.idleRestSeconds });
+  sim.setHalf(spriteHalf.w / 0.9, spriteHalf.h / 0.9);
   lastT = Date.now();
 
   loopTimer = setInterval(() => {
@@ -100,15 +115,20 @@ function startLoop() {
 
     const cursor = screen.getCursorScreenPoint();
     sim.update(dt, cursor);
-    const snap = sim.snapshot;
 
-    // 悬停：光标是否压在宠物身上（全局坐标）。
+    // 吃图标：到位后生成一个可还原遮挡。
+    const eat = sim.takeEatRequest();
+    if (eat) {
+      occlusions.push({ id: occId++, ...eat });
+      broadcastOcclusions();
+    }
+
+    const snap = sim.snapshot;
     const hover = Math.abs(cursor.x - snap.x) < spriteHalf.w &&
                   Math.abs(cursor.y - snap.y) < spriteHalf.h;
 
     for (const w of windows) {
       if (w.win.isDestroyed()) continue;
-      // 只有「光标所在那块屏」的窗口在悬停/拖拽时变可交互，其余保持穿透。
       const cursorHere = pointInBounds(cursor, w.display.bounds);
       const interactive = (hover || sim.dragging) && cursorHere;
       w.win.setIgnoreMouseEvents(!interactive, { forward: true });
@@ -117,21 +137,45 @@ function startLoop() {
   }, 16);
 }
 
+function restoreIcons() {
+  if (!occlusions.length) return;
+  occlusions = [];
+  broadcastOcclusions();
+}
+
 ipcMain.on('drag-start', () => {
   if (!sim) return;
   const c = screen.getCursorScreenPoint();
   sim.startDrag(c.x, c.y);
 });
 ipcMain.on('drag-end', () => { if (sim) sim.endDrag(); });
+ipcMain.on('restore-icons', restoreIcons);
+
+function createTray() {
+  try {
+    const iconPath = path.join(__dirname, '..', '..', 'assets', 'cat', 'idle_00.png');
+    let img = nativeImage.createFromPath(iconPath);
+    if (!img.isEmpty()) img = img.resize({ width: 18, height: 18 });
+    tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
+    tray.setToolTip('桌面宠物');
+    const menu = Menu.buildFromTemplate([
+      { label: '还原被吃掉的图标', click: restoreIcons },
+      { type: 'separator' },
+      { label: '退出', click: () => app.quit() }
+    ]);
+    tray.setContextMenu(menu);
+  } catch { /* 托盘失败不致命 */ }
+}
 
 function rebuild() {
-  if (sim) sim.setWorld(worldBounds());
+  if (sim) { sim.setWorld(worldBounds()); sim.setConfig({ primary: screen.getPrimaryDisplay().bounds }); }
   createWindows();
 }
 
 app.whenReady().then(() => {
-  createWindows();
   startLoop();
+  createWindows();
+  createTray();
   screen.on('display-added', rebuild);
   screen.on('display-removed', rebuild);
   screen.on('display-metrics-changed', rebuild);

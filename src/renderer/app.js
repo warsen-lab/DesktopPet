@@ -1,6 +1,6 @@
 // 渲染进程入口（多屏版）：本窗口只覆盖一块显示器。
-// 宠物状态由主进程统一模拟后通过 onState 推来（全局坐标），这里减去本屏偏移后绘制；
-// 宠物在别的屏时，减完偏移会落到画布外，自然不显示。拖拽事件上报给主进程。
+// 宠物状态由主进程统一模拟后通过 onState 推来（全局坐标），这里减去本屏偏移后绘制。
+// 被吃掉的图标遮挡由 onOcclusions 推来，也按本屏偏移绘制。拖拽/还原事件上报主进程。
 
 import { Renderer2D } from './renderers/Renderer2D.js';
 // 以后换 3D：import { Renderer3D } from './renderers/Renderer3D.js';
@@ -14,6 +14,7 @@ renderer.init(canvas, w, h);
 
 let offsetX = 0, offsetY = 0;
 let snap = null;
+let occlusions = [];
 
 window.petBridge?.onInit?.((data) => {
   offsetX = data.offsetX || 0;
@@ -22,10 +23,20 @@ window.petBridge?.onInit?.((data) => {
 });
 
 window.petBridge?.onState?.((s) => { snap = s; });
+window.petBridge?.onOcclusions?.((list) => { occlusions = list || []; });
 
-// 拖拽：窗口仅在「光标压在宠物身上」时被主进程设为可交互，所以这里的按下≈按在宠物上。
-window.addEventListener('mousedown', () => window.petBridge?.dragStart?.());
-window.addEventListener('mouseup', () => window.petBridge?.dragEnd?.());
+// 拖拽：窗口仅在「光标压在宠物身上」时可交互，故这里按下≈按在宠物上。
+window.addEventListener('mousedown', (e) => {
+  if (e.button === 0) window.petBridge?.dragStart?.();
+});
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) window.petBridge?.dragEnd?.();
+});
+// 右键宠物 → 还原所有被吃掉的图标。
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  window.petBridge?.restoreIcons?.();
+});
 
 window.addEventListener('resize', () => {
   w = window.innerWidth; h = window.innerHeight;
@@ -33,9 +44,13 @@ window.addEventListener('resize', () => {
 });
 
 function loop() {
+  renderer.clear();
+  // 遮挡（被吃图标）：全局 → 本屏局部。
+  if (occlusions.length) {
+    renderer.drawOcclusions(occlusions.map(o => ({ ...o, x: o.x - offsetX, y: o.y - offsetY })));
+  }
   if (snap) {
-    // 全局坐标 → 本屏局部坐标。
-    renderer.render({ ...snap, x: snap.x - offsetX, y: snap.y - offsetY }, 0);
+    renderer.drawPet({ ...snap, x: snap.x - offsetX, y: snap.y - offsetY });
   }
   requestAnimationFrame(loop);
 }

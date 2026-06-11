@@ -1,0 +1,4 @@
+{
+  "idleRestSeconds": 30,
+  "_comment": "idleRestSeconds: 鼠标静止多少秒后宠物原地趴下休息（默认 30）。改完重启生效。"
+}

@@ -55,10 +55,17 @@ export class Renderer2D extends PetRenderer {
     }
   }
 
-  // 按宠物状态选动画集：移动用 walk，其余（待机/拖拽/下落）用 idle。
-  _setFor(state) {
-    if ((state.state === 'walk' || state.state === 'run') && this.sets.walk) return this.sets.walk;
-    return this.sets.idle || this.sets.walk;
+  // 按宠物状态选动画集（带回退）：优先用与状态同名的集，没有就回退。
+  //  walk/run/eat → walk(动)，rest → idle 躺(动)，stand/drag/fall/angry → 站立定帧。
+  _animFor(state) {
+    const pick = (n) => this.sets[n];
+    const s = state.state;
+    if (s === 'rest') return { set: pick('rest') || pick('idle') || pick('walk'), animated: true };
+    if (s === 'walk' || s === 'run') return { set: pick('walk') || pick('idle'), animated: true };
+    if (s === 'eat') return { set: pick('eat') || pick('walk') || pick('idle'), animated: true };
+    if (s === 'angry') return { set: pick('angry') || pick('walk') || pick('idle'), animated: !!pick('angry') };
+    // stand / drag / fall / 默认 → 站立定帧
+    return { set: pick('stand') || pick('walk') || pick('idle'), animated: !!pick('stand') };
   }
 
   resize(width, height) {
@@ -69,48 +76,43 @@ export class Renderer2D extends PetRenderer {
     this.canvas.style.height = height + 'px';
   }
 
-  render(state, dt) {
+  // 每帧先清空（保持透明）。
+  clear() {
     const ctx = this.ctx;
-    // 清空（保持透明）。
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
 
+  // 画宠物（局部坐标）。
+  drawPet(state) {
+    const ctx = this.ctx;
     ctx.save();
     ctx.translate(state.x, state.y);
     ctx.scale(state.facing * state.scale, state.scale);
-
     if (this.spriteReady) {
-      this.drawSpriteFrame(ctx, state); // 真实宠物精灵
+      this.drawSpriteFrame(ctx, state);
+      this._drawFx(ctx, state);
     } else {
-      this.drawCat(ctx, state);         // 占位猫（精灵加载完成前）
+      this.drawCat(ctx, state);
     }
-
     ctx.restore();
   }
 
-  hitTest(px, py, state) {
-    if (this.spriteReady) {
-      const set = this._setFor(state);
-      const hw = (set.width / 2) * 0.9;
-      const hh = (set.height / 2) * 0.9;
-      return Math.abs(px - state.x) < hw && Math.abs(py - state.y) < hh;
-    }
-    return Math.hypot(px - state.x, py - state.y) < HIT_RADIUS;
-  }
-
-  // 画真实宠物精灵：地面软阴影 + 当前帧（乒乓循环，避免视频非完美循环的跳变）。
+  // 画真实宠物精灵：地面软阴影 + 当前帧（乒乓循环，避免视频非完美循环跳变）。
   drawSpriteFrame(ctx, state) {
-    const set = this._setFor(state);
+    const { set, animated } = this._animFor(state);
+    if (!set) return;
     const imgs = set.imgs;
     const n = imgs.length;
-    // 乒乓索引：0..n-1..0，循环更顺滑。
-    const cycle = Math.floor(state.animTime * set.fps);
-    const period = (n - 1) * 2 || 1;
-    const phase = cycle % period;
-    const idx = phase < n ? phase : period - phase;
+    let idx = 0;
+    if (animated) {
+      const cycle = Math.floor(state.animTime * set.fps);
+      const period = (n - 1) * 2 || 1;
+      const phase = cycle % period;
+      idx = phase < n ? phase : period - phase;
+    }
     const img = imgs[idx] || imgs[0];
 
-    // 脚下软阴影（精灵已水平翻转，阴影画在本地坐标即可）。
     ctx.save();
     ctx.globalAlpha = 0.16;
     ctx.fillStyle = '#000';
@@ -120,6 +122,79 @@ export class Renderer2D extends PetRenderer {
     ctx.restore();
 
     ctx.drawImage(img, -set.width / 2, -set.height / 2, set.width, set.height);
+  }
+
+  // 生气 / 吃 的程序化特效（没有专用精灵时也能读出状态）。
+  _drawFx(ctx, state) {
+    const { set } = this._animFor(state);
+    const topY = set ? -set.height / 2 : -60;
+    if (state.state === 'angry') {
+      // 头顶「怒」气符号 + 轻微抖动。
+      ctx.save();
+      ctx.scale(state.facing, 1);                 // 抵消水平翻转，符号不镜像
+      const jitter = Math.sin(state.animTime * 40) * 1.5;
+      ctx.translate(set ? set.width * 0.28 : 18, topY + 14 + jitter);
+      ctx.strokeStyle = '#ff3b3b';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      // 两道交叉的怒气筋。
+      ctx.beginPath(); ctx.moveTo(-6, -6); ctx.lineTo(2, 2); ctx.moveTo(2, -6); ctx.lineTo(-6, 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6, -8); ctx.lineTo(12, -2); ctx.moveTo(12, -8); ctx.lineTo(6, -2); ctx.stroke();
+      ctx.restore();
+    } else if (state.state === 'eat') {
+      // 嘴边「啃食」碎屑动效。
+      ctx.save();
+      ctx.scale(state.facing, 1);
+      const blink = Math.sin(state.animTime * 18) > 0;
+      ctx.fillStyle = blink ? '#caa46a' : '#b8915a';
+      for (let i = 0; i < 3; i++) {
+        const a = state.animTime * 6 + i * 2;
+        ctx.beginPath();
+        ctx.arc((set ? set.width * 0.3 : 20) + Math.cos(a) * 6, 6 + Math.sin(a) * 5, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // 画被「吃掉」的图标遮挡（局部坐标）。做成可还原的「啃了一口的饼干」盖住图标。
+  drawOcclusions(list) {
+    const ctx = this.ctx;
+    for (const o of list) {
+      const x = o.x, y = o.y, w = o.w || 72, h = o.h || 84;
+      // 只画落在本屏附近的，省开销。
+      if (x < -w || y < -h || x > this.canvas.width + w || y > this.canvas.height + h) continue;
+      ctx.save();
+      ctx.translate(x, y);
+      // 阴影
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath(); ctx.ellipse(0, h * 0.32, w * 0.34, 6, 0, 0, Math.PI * 2); ctx.fill();
+      // 饼干主体（盖住图标）
+      ctx.fillStyle = '#d8b878';
+      this._roundRect(ctx, -w / 2, -h / 2, w, h * 0.78, 12);
+      ctx.fill();
+      // 啃掉一口（右上角抠出）
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath(); ctx.arc(w / 2 - 8, -h / 2 + 6, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(w / 2 - 22, -h / 2 + 2, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      // 巧克力豆
+      ctx.fillStyle = '#6b4423';
+      [[-12, -6], [8, 4], [-4, 14], [14, -10]].forEach(([dx, dy]) => {
+        ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.restore();
+    }
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   // ——— 当前占位实现：程序化画一只猫 ———

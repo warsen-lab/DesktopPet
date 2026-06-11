@@ -56,14 +56,16 @@ export class Renderer2D extends PetRenderer {
   }
 
   // 按宠物状态选动画集（带回退）：优先用与状态同名的集，没有就回退。
-  //  walk/run/eat → walk(动)，rest → idle 躺(动)，stand/drag/fall/angry → 站立定帧。
+  //  rest → idle 躺(动)，run → walk 加速，angry/poop → 站立定帧。
   _animFor(state) {
     const pick = (n) => this.sets[n];
     const s = state.state;
     if (s === 'rest') return { set: pick('rest') || pick('idle') || pick('walk'), animated: true };
-    if (s === 'walk' || s === 'run') return { set: pick('walk') || pick('idle'), animated: true };
+    if (s === 'run') return { set: pick('run') || pick('walk') || pick('idle'), animated: true };
+    if (s === 'walk') return { set: pick('walk') || pick('idle'), animated: true };
     if (s === 'angry') return { set: pick('angry') || pick('walk') || pick('idle'), animated: !!pick('angry') };
-    // stand / drag / fall / poop / 默认 → 站立定帧
+    if (s === 'poop') return { set: pick('poop') || pick('stand') || pick('walk') || pick('idle'), animated: !!(pick('poop') || pick('stand')) };
+    // stand / drag / fall / 默认 → 站立定帧
     return { set: pick('stand') || pick('walk') || pick('idle'), animated: !!pick('stand') };
   }
 

@@ -1,11 +1,39 @@
 {
   "sets": {
+    "angry": {
+      "pattern": "angry_%02d.png",
+      "frameCount": 10,
+      "width": 80,
+      "height": 150,
+      "fps": 12
+    },
     "idle": {
       "pattern": "idle_%02d.png",
       "frameCount": 24,
       "width": 88,
       "height": 150,
       "fps": 10
+    },
+    "poop": {
+      "pattern": "poop_%02d.png",
+      "frameCount": 10,
+      "width": 79,
+      "height": 150,
+      "fps": 8
+    },
+    "run": {
+      "pattern": "run_%02d.png",
+      "frameCount": 10,
+      "width": 98,
+      "height": 150,
+      "fps": 16
+    },
+    "stand": {
+      "pattern": "stand_%02d.png",
+      "frameCount": 10,
+      "width": 67,
+      "height": 150,
+      "fps": 6
     },
     "walk": {
       "pattern": "walk_%02d.png",

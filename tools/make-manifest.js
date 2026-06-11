@@ -8,7 +8,7 @@ const sharp = require('sharp');
 
 const CAT_DIR = path.join(__dirname, '..', 'assets', 'cat');
 // 各动作默认播放帧率（可按需调整）。
-const FPS = { idle: 10, rest: 8, stand: 6, walk: 13, run: 16, angry: 12, eat: 12, drag: 1, fall: 1 };
+const FPS = { idle: 10, rest: 8, stand: 6, walk: 13, run: 16, angry: 12, poop: 8, eat: 12, drag: 1, fall: 1 };
 
 async function main() {
   const files = fs.readdirSync(CAT_DIR).filter(f => /^[a-z]+_\d+\.png$/.test(f));

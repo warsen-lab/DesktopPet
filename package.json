@@ -1,0 +1,17 @@
+{
+  "name": "desktop-pet",
+  "version": "0.1.0",
+  "description": "桌面宠物 — 透明置顶窗口里的桌宠，跟随/躲避鼠标，可拖拽。渲染层可替换（2D canvas / 3D three.js）。",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "dependencies": {
+    "@imgly/background-removal-node": "^1.4.5",
+    "sharp": "^0.35.0"
+  }
+}

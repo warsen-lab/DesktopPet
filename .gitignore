@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+
+# 精灵构建中间产物（最终成品 assets/cat/*.png + manifest.json 保留入库）
+# 所有下划线前缀的临时目录/日志（_frames _cut _inspect _walk_src _ws2 _*.log 等）
+assets/_*
+assets/cat/_test.png

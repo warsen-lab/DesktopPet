@@ -1,0 +1,18 @@
+{
+  "sets": {
+    "idle": {
+      "pattern": "idle_%02d.png",
+      "frameCount": 24,
+      "width": 88,
+      "height": 150,
+      "fps": 10
+    },
+    "walk": {
+      "pattern": "walk_%02d.png",
+      "frameCount": 14,
+      "width": 94,
+      "height": 150,
+      "fps": 13
+    }
+  }
+}

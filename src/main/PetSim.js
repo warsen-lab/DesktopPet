@@ -10,7 +10,7 @@ const S = {
 const COMFORT_RADIUS = 90;
 const RUN_DISTANCE = 340;
 const WALK_SPEED = 150;
-const RUN_SPEED = 520;
+const DEFAULT_RUN_SPEED = 520;
 const GRAVITY = 2400;
 const BOUNCE = 0.45;
 const CURSOR_MOVE_EPS = 3;
@@ -26,6 +26,7 @@ class PetSim {
     this.idleRestSeconds = opts.idleRestSeconds ?? 30;
     this.poopMinSec = opts.poopMinSec ?? 3600;
     this.poopMaxSec = opts.poopMaxSec ?? 7200;
+    this.runSpeed = opts.runSpeed ?? DEFAULT_RUN_SPEED;
     this.half = { w: 47, h: 75 };
 
     this.x = start.x; this.y = start.y;
@@ -53,6 +54,9 @@ class PetSim {
     if (opts.idleRestSeconds != null) this.idleRestSeconds = opts.idleRestSeconds;
     if (opts.poopMinSec != null) this.poopMinSec = opts.poopMinSec;
     if (opts.poopMaxSec != null) this.poopMaxSec = opts.poopMaxSec;
+    if (opts.runSpeed != null) this.runSpeed = opts.runSpeed;
+    // 拉屎间隔变了就按新区间重新倒计时（否则旧的超长倒计时可能拖到几小时后才生效）。
+    if (opts.poopMinSec != null || opts.poopMaxSec != null) this._resetPoopCountdown();
   }
 
   _resetPoopCountdown() {
@@ -170,7 +174,7 @@ class PetSim {
     const dy = cursor.y - this.y;
     const dist = Math.hypot(dx, dy);
     if (dist > COMFORT_RADIUS) {
-      const speed = dist > RUN_DISTANCE ? RUN_SPEED : WALK_SPEED;
+      const speed = dist > RUN_DISTANCE ? this.runSpeed : WALK_SPEED;
       this.state = dist > RUN_DISTANCE ? S.RUN : S.WALK;
       const ux = dx / dist, uy = dy / dist;
       const step = Math.min(speed * dt, dist - COMFORT_RADIUS);

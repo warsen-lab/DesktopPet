@@ -1,10 +1,6 @@
 // 暴露最小安全 API 给渲染进程。多屏版：宠物状态由主进程统一模拟后广播，
 // 渲染进程只负责画 + 上报拖拽。
 const { contextBridge, ipcRenderer } = require('electron');
-const fs = require('fs');
-const path = require('path');
-
-const DEBUG_LOG = path.join(__dirname, '..', '..', 'assets', '_debug.log');
 
 contextBridge.exposeInMainWorld('petBridge', {
   // 初始化：本窗口所属显示器的偏移(offsetX/offsetY) + 精灵清单。
@@ -17,7 +13,5 @@ contextBridge.exposeInMainWorld('petBridge', {
   dragStart: () => ipcRenderer.send('drag-start'),
   dragEnd: () => ipcRenderer.send('drag-end'),
   // 清理所有大便（右键宠物时调用）。
-  cleanPoops: () => ipcRenderer.send('clean-poops'),
-  // 临时调试。
-  debug: (msg) => { try { fs.appendFileSync(DEBUG_LOG, msg + '\n'); } catch {} }
+  cleanPoops: () => ipcRenderer.send('clean-poops')
 });

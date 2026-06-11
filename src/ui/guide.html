@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data:" />
+  <title>桌面宠物 — 素材工坊</title>
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body>
+  <h1>宠物素材工坊</h1>
+  <p class="sub">想换成你家宠物？按下面每个动作的「拍摄角度示意」拍照/录像，做成透明 PNG 序列帧放进素材文件夹，点「重新扫描」立即生效。素材放在你的用户目录，<b>升级软件不会被覆盖</b>。</p>
+
+  <div class="toolbar">
+    <button id="btnOpenFolder" class="primary">打开素材文件夹</button>
+    <button id="btnRescan">重新扫描并应用</button>
+    <span id="rescanResult" class="hint"></span>
+    <span class="spacer"></span>
+  </div>
+  <div class="card">
+    素材目录：<code class="path" id="petsDir">…</code>
+    <p class="hint">命名规则：<code>动作_两位序号.png</code>（如 <code>walk_00.png … walk_11.png</code>），透明背景、同一动作每帧尺寸一致、宠物脚底贴画布底部居中。</p>
+  </div>
+
+  <div class="card">
+    <h2>拍摄机位总览（俯视图）</h2>
+    <svg viewBox="0 0 560 150" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:150px">
+      <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <!-- 宠物（俯视：身体椭圆+头圆+尾巴），朝右 -->
+        <ellipse cx="280" cy="75" rx="38" ry="20"/>
+        <circle cx="326" cy="75" r="13"/>
+        <path d="M242,75 Q220,68 214,52"/>
+        <!-- 侧面机位（下方） -->
+        <rect x="266" y="120" width="22" height="14" rx="2"/>
+        <circle cx="277" cy="127" r="4"/>
+        <path d="M277,118 L280,97" stroke-dasharray="4 4"/>
+        <!-- 正面机位（右侧） -->
+        <rect x="386" y="68" width="22" height="14" rx="2"/>
+        <circle cx="397" cy="75" r="4"/>
+        <path d="M384,75 L341,75" stroke-dasharray="4 4"/>
+      </g>
+      <g font-size="12" fill="#8c8174" font-family="sans-serif">
+        <text x="232" y="143">侧面机位：walk / run / rest / poop</text>
+        <text x="412" y="79">正面机位：stand / angry</text>
+        <text x="252" y="40">宠物（头朝右）</text>
+      </g>
+    </svg>
+    <p class="hint">所有机位都<b>与宠物同高（平视）</b>，离地约宠物肩高；镜头不要俯拍/仰拍，不然帧与帧之间透视对不上。</p>
+  </div>
+
+  <h2 style="margin:14px 0 10px">每个动作的拍摄角度与姿势</h2>
+  <div class="grid">
+
+    <div class="pose" data-set="walk">
+      <svg viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="110" x2="230" y2="110" stroke="#cfc6b8"/>
+          <!-- 侧面行走的猫：身体、头、耳、尾、四条交错的腿 -->
+          <path d="M120,78 Q118,60 138,58 Q166,55 172,70 Q176,80 168,86"/>
+          <path d="M120,78 Q112,86 122,90 L164,90 Q170,88 168,86"/>
+          <circle cx="182" cy="62" r="14"/>
+          <path d="M174,52 L171,40 L181,48"/>
+          <path d="M188,51 L190,39 L196,49"/>
+          <path d="M120,80 Q100,76 94,58"/>
+          <line x1="130" y1="90" x2="124" y2="110"/>
+          <line x1="142" y1="90" x2="146" y2="108"/>
+          <line x1="156" y1="90" x2="150" y2="110"/>
+          <line x1="166" y1="88" x2="172" y2="108"/>
+          <!-- 相机：左侧平视 -->
+          <rect x="22" y="66" width="22" height="14" rx="2"/>
+          <circle cx="33" cy="73" r="4"/>
+          <path d="M46,73 L104,73" stroke-dasharray="4 4"/>
+        </g>
+        <text x="22" y="96" font-size="11" fill="#8c8174" font-family="sans-serif">侧面 · 与宠物同高</text>
+      </svg>
+      <div class="name">行走 <code>walk_00.png …</code></div>
+      <div class="angle">📷 侧面平视。宠物从左往右匀速走，截取一个完整步态循环（8–16 帧），首尾能衔接。</div>
+      <div class="status" data-status>…</div>
+    </div>
+
+    <div class="pose" data-set="run">
+      <svg viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="110" x2="230" y2="110" stroke="#cfc6b8"/>
+          <!-- 侧面奔跑：身体拉长、前后腿伸展、尾巴拉平 -->
+          <path d="M108,80 Q116,62 146,60 Q176,58 184,72 Q188,82 178,86"/>
+          <path d="M108,80 Q104,88 116,89 L172,89 Q180,88 178,86"/>
+          <circle cx="196" cy="62" r="13"/>
+          <path d="M188,53 L185,42 L194,49"/>
+          <path d="M201,51 L204,40 L209,50"/>
+          <path d="M108,80 Q88,80 78,70"/>
+          <path d="M120,89 L102,104"/>
+          <path d="M128,89 L116,107"/>
+          <path d="M166,89 L184,102"/>
+          <path d="M174,88 L192,98"/>
+          <!-- 速度线 -->
+          <path d="M60,64 L78,64 M54,74 L72,74" stroke="#cfc6b8"/>
+          <rect x="22" y="66" width="22" height="14" rx="2"/>
+          <circle cx="33" cy="73" r="4"/>
+          <path d="M46,73 L70,73" stroke-dasharray="4 4"/>
+        </g>
+        <text x="22" y="96" font-size="11" fill="#8c8174" font-family="sans-serif">侧面 · 与宠物同高</text>
+      </svg>
+      <div class="name">快跑 <code>run_00.png …</code></div>
+      <div class="angle">📷 侧面平视。宠物快跑（可用逗猫棒/玩具引导），取两个步态循环（8–12 帧）。</div>
+      <div class="status" data-status>…</div>
+    </div>
+
+    <div class="pose" data-set="idle">
+      <svg viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="110" x2="230" y2="110" stroke="#cfc6b8"/>
+          <!-- 侧躺休息：低扁身体、头贴地、卷尾 -->
+          <path d="M108,102 Q108,84 136,84 Q170,82 176,94 Q180,102 170,104 Q140,108 112,106 Q106,106 108,102"/>
+          <circle cx="180" cy="90" r="13"/>
+          <path d="M173,81 L170,70 L179,77"/>
+          <path d="M186,79 L189,68 L194,78"/>
+          <path d="M110,103 Q92,103 90,90 Q90,80 102,82"/>
+          <!-- 呼吸符号 zZ -->
+          <path d="M204,58 l8,0 l-8,8 l8,0" stroke="#cfc6b8"/>
+          <path d="M214,42 l10,0 l-10,10 l10,0" stroke="#cfc6b8"/>
+          <rect x="22" y="84" width="22" height="14" rx="2"/>
+          <circle cx="33" cy="91" r="4"/>
+          <path d="M46,91 L100,93" stroke-dasharray="4 4"/>
+        </g>
+        <text x="22" y="76" font-size="11" fill="#8c8174" font-family="sans-serif">侧面 · 与宠物同高</text>
+      </svg>
+      <div class="name">休息 <code>idle_00.png …</code>（或 <code>rest_*</code>）</div>
+      <div class="angle">📷 侧面平视。宠物侧躺/趴下，只有呼吸起伏和偶尔眨眼（8–24 帧循环）。</div>
+      <div class="status" data-status>…</div>
+    </div>
+
+    <div class="pose" data-set="stand">
+      <svg viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="110" x2="230" y2="110" stroke="#cfc6b8"/>
+          <!-- 正面端坐：竖直蛋形身体 + 头 + 前爪并拢 -->
+          <path d="M150,108 Q132,108 132,84 Q132,62 150,62 Q168,62 168,84 Q168,108 150,108"/>
+          <circle cx="150" cy="50" r="16"/>
+          <path d="M139,40 L135,26 L147,35"/>
+          <path d="M161,40 L165,26 L153,35"/>
+          <line x1="144" y1="92" x2="144" y2="108"/>
+          <line x1="156" y1="92" x2="156" y2="108"/>
+          <!-- 尾巴绕到前面 -->
+          <path d="M168,104 Q182,106 184,94"/>
+          <rect x="40" y="76" width="22" height="14" rx="2"/>
+          <circle cx="51" cy="83" r="4"/>
+          <path d="M64,83 L126,83" stroke-dasharray="4 4"/>
+        </g>
+        <text x="40" y="106" font-size="11" fill="#8c8174" font-family="sans-serif">正面 · 与宠物同高</text>
+      </svg>
+      <div class="name">端坐 <code>stand_00.png …</code></div>
+      <div class="angle">📷 正面平视。宠物面向镜头端坐、轻微呼吸/转头（4–10 帧循环）。到达鼠标旁时播放。</div>
+      <div class="status" data-status>…</div>
+    </div>
+
+    <div class="pose" data-set="angry">
+      <svg viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="110" x2="230" y2="110" stroke="#cfc6b8"/>
+          <!-- 正面炸毛：身体轮廓带锯齿毛刺 + 压耳 -->
+          <path d="M150,108 Q130,108 131,86 L126,80 L134,76 L130,68 L139,66 L138,58 Q144,60 150,60 Q156,60 162,58 L161,66 L170,68 L166,76 L174,80 L169,86 Q170,108 150,108"/>
+          <circle cx="150" cy="48" r="15"/>
+          <path d="M138,42 L130,34 L142,36"/>
+          <path d="M162,42 L170,34 L158,36"/>
+          <!-- 怒气符号 -->
+          <path d="M186,40 l-8,8 m0,-8 l8,8 M198,30 l-7,7 m0,-7 l7,7" stroke="#c75c5c"/>
+          <line x1="144" y1="94" x2="144" y2="108"/>
+          <line x1="156" y1="94" x2="156" y2="108"/>
+          <rect x="40" y="76" width="22" height="14" rx="2"/>
+          <circle cx="51" cy="83" r="4"/>
+          <path d="M64,83 L124,83" stroke-dasharray="4 4"/>
+        </g>
+        <text x="40" y="106" font-size="11" fill="#8c8174" font-family="sans-serif">正面或侧面 · 平视</text>
+      </svg>
+      <div class="name">生气 <code>angry_00.png …</code></div>
+      <div class="angle">📷 正面/侧面平视。炸毛、耳朵后压、尾巴抖动（6–10 帧）。被拖拽摔落后播放。</div>
+      <div class="status" data-status>…</div>
+    </div>
+
+    <div class="pose" data-set="poop">
+      <svg viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#3a3128" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="110" x2="230" y2="110" stroke="#cfc6b8"/>
+          <!-- 侧面蹲姿：弓背压低后躯、尾巴翘起 -->
+          <path d="M118,96 Q116,78 140,72 Q166,66 174,80 Q178,90 170,94"/>
+          <path d="M118,96 Q112,104 124,106 L162,106 Q172,104 170,94"/>
+          <circle cx="184" cy="70" r="13"/>
+          <path d="M176,61 L173,50 L182,57"/>
+          <path d="M190,59 L193,48 L198,58"/>
+          <path d="M120,94 Q108,86 110,72"/>
+          <line x1="162" y1="106" x2="166" y2="110"/>
+          <line x1="130" y1="106" x2="128" y2="110"/>
+          <!-- 汗滴 -->
+          <path d="M204,56 q4,6 0,9 q-4,-3 0,-9" fill="#7ec8ff" stroke="#7ec8ff"/>
+          <rect x="22" y="80" width="22" height="14" rx="2"/>
+          <circle cx="33" cy="87" r="4"/>
+          <path d="M46,87 L106,89" stroke-dasharray="4 4"/>
+        </g>
+        <text x="22" y="72" font-size="11" fill="#8c8174" font-family="sans-serif">侧面 · 与宠物同高</text>
+      </svg>
+      <div class="name">拉屎 <code>poop_00.png …</code></div>
+      <div class="angle">📷 侧面平视。蹲下弓背、轻微用力颤抖（6–10 帧）。没有真实镜头可以不拍——程序会用端坐帧加特效兜底。</div>
+      <div class="status" data-status>…</div>
+    </div>
+
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2>当前素材状态</h2>
+    <table>
+      <thead><tr><th>动作</th><th>帧数</th><th>尺寸</th></tr></thead>
+      <tbody id="statusTable"></tbody>
+    </table>
+    <p class="hint" style="margin-top:8px">替换/新增帧后点上方「重新扫描并应用」，无需重启程序。带背景的照片可用 AI 抠图工具批量去背景（详见项目 docs/SPRITE-GUIDE.md）。</p>
+  </div>
+
+  <script src="guide.js"></script>
+</body>
+</html>

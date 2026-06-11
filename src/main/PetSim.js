@@ -183,8 +183,10 @@ class PetSim {
   }
 
   _clampToScreen() {
+    // X：用所有屏的并集范围钳制，允许横跨多屏（否则会被单屏边界挡住过不去）。
+    this.x = Math.max(this.world.minX + this.half.w, Math.min(this.world.maxX - this.half.w, this.x));
+    // Y：用「当前所在那块屏的工作区」钳制，防止越过该屏可视区下/上边缘被裁。
     const a = this._areaAt(this.x, this.y);
-    this.x = Math.max(a.x + this.half.w, Math.min(a.x + a.width - this.half.w, this.x));
     this.y = Math.max(a.y + this.half.h, Math.min(a.y + a.height - this.half.h, this.y));
   }
 

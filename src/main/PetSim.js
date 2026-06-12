@@ -7,7 +7,9 @@ const S = {
   DRAG: 'drag', FALL: 'fall', ANGRY: 'angry', POOP: 'poop'
 };
 
-const COMFORT_RADIUS = 90;
+const COMFORT_RADIUS = 90;      // 行走的目标间距：走到离鼠标这么近就够了
+const ARRIVE_MARGIN = 10;       // 到达余量：走进 COMFORT_RADIUS+10 内即判定到达并停下（吸收浮点误差，杜绝原地踏步）
+const FOLLOW_RADIUS = 135;      // 滞回外圈：站立时鼠标拉开到此距离才重新起步（防边界反复横跳）
 const RUN_DISTANCE = 340;
 const WALK_SPEED = 150;
 const DEFAULT_RUN_SPEED = 520;
@@ -173,9 +175,16 @@ class PetSim {
     const dx = cursor.x - this.x;
     const dy = cursor.y - this.y;
     const dist = Math.hypot(dx, dy);
-    if (dist > COMFORT_RADIUS) {
-      const speed = dist > RUN_DISTANCE ? this.runSpeed : WALK_SPEED;
-      this.state = dist > RUN_DISTANCE ? S.RUN : S.WALK;
+    // 滞回 + 到达余量：杜绝「贴到鼠标边缘还在原地踏步、或边界处反复横跳切走/停」。
+    //   - 站立时要等鼠标拉开到 FOLLOW_RADIUS 才重新起步；
+    //   - 一旦行走，走进 COMFORT_RADIUS + ARRIVE_MARGIN 内就立刻判定到达 → 站立不动。
+    // 中间地带（stopAt..FOLLOW_RADIUS）保持当前状态，光标微抖也不会触发走路。
+    const moving = this.state === S.WALK || this.state === S.RUN;
+    const stopAt = COMFORT_RADIUS + ARRIVE_MARGIN;
+    if (moving ? dist > stopAt : dist > FOLLOW_RADIUS) {
+      const running = dist > RUN_DISTANCE;
+      const speed = running ? this.runSpeed : WALK_SPEED;
+      this.state = running ? S.RUN : S.WALK;
       const ux = dx / dist, uy = dy / dist;
       const step = Math.min(speed * dt, dist - COMFORT_RADIUS);
       this.vx = ux * speed; this.vy = uy * speed;

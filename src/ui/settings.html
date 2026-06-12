@@ -25,6 +25,19 @@
   </div>
 
   <div class="card">
+    <h2>外观</h2>
+    <div class="row">
+      <label for="renderMode">渲染模式</label>
+      <select id="renderMode">
+        <option value="2d">2D 照片精灵</option>
+        <option value="3d">3D 模型</option>
+      </select>
+      <span class="hint" id="renderModeHint"></span>
+    </div>
+    <p class="hint">3D 模式使用 .glb 宠物模型（带骨骼自动行走）。想换自己的模型？把 .glb 放进素材目录的 pets/model 文件夹即可。</p>
+  </div>
+
+  <div class="card">
     <h2>宠物行为</h2>
     <div class="row">
       <label for="idleRest">休息：静止多久趴下</label>

@@ -13,5 +13,7 @@ contextBridge.exposeInMainWorld('petBridge', {
   dragStart: () => ipcRenderer.send('drag-start'),
   dragEnd: () => ipcRenderer.send('drag-end'),
   // 清理所有大便（右键宠物时调用）。
-  cleanPoops: () => ipcRenderer.send('clean-poops')
+  cleanPoops: () => ipcRenderer.send('clean-poops'),
+  // 3D 模式：主进程读出 .glb 字节（渲染进程的 file:// fetch 被 CSP/CORS 拦，走 IPC）。
+  getModelData: () => ipcRenderer.invoke('pet:get-model-data')
 });

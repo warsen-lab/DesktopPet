@@ -14,5 +14,7 @@ contextBridge.exposeInMainWorld('petUI', {
   // 素材
   openPetsFolder: () => ipcRenderer.invoke('ui:open-pets-folder'),
   getAssetStatus: () => ipcRenderer.invoke('ui:get-asset-status'),
-  rescanAssets: () => ipcRenderer.invoke('ui:rescan-assets')
+  rescanAssets: () => ipcRenderer.invoke('ui:rescan-assets'),
+  // 3D 模型状态（设置窗口提示用）
+  getModelStatus: () => ipcRenderer.invoke('ui:get-model-status')
 });

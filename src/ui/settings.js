@@ -22,6 +22,7 @@ function render(s) {
   $('poopMaxVal').textContent = fmtMin(s.poopMaxMinutes);
   $('runSpeed').value = s.runSpeed;
   $('runSpeedVal').textContent = `${s.runSpeed} px/s`;
+  $('renderMode').value = s.renderMode || '2d';
 }
 
 function showUpdate(latest) {
@@ -49,6 +50,18 @@ async function init() {
   $('runSpeed').addEventListener('input', (e) => {
     $('runSpeedVal').textContent = `${e.target.value} px/s`;
     debounceSave({ runSpeed: Number(e.target.value) });
+  });
+
+  // 渲染模式：切换立即生效（主进程重建覆盖窗口）。没有模型文件时给出提示。
+  $('renderMode').addEventListener('change', async (e) => {
+    const s = await window.petUI.saveSettings({ renderMode: e.target.value });
+    render(s);
+    if (s.renderMode === '3d') {
+      const m = await window.petUI.getModelStatus?.();
+      $('renderModeHint').textContent = m?.path ? '' : '（未找到 .glb 模型，已临时回退 2D 显示）';
+    } else {
+      $('renderModeHint').textContent = '';
+    }
   });
 
   // 开机自启

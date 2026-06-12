@@ -9,7 +9,8 @@ const DEFAULTS = {
   idleRestSeconds: 30,   // 鼠标静止多少秒后宠物趴下休息
   poopMinMinutes: 60,    // 随机拉屎间隔下限（分钟）
   poopMaxMinutes: 120,   // 随机拉屎间隔上限（分钟）
-  runSpeed: 520          // 快跑速度（像素/秒，建议 200–900）
+  runSpeed: 520,         // 快跑速度（像素/秒，建议 200–900）
+  renderMode: '2d'       // 渲染模式：'2d' 照片精灵 / '3d' 模型
 };
 
 function settingsPath() {
@@ -34,6 +35,7 @@ function sanitize(s) {
   out.poopMinMinutes = Math.max(1, Math.min(1440, Number(out.poopMinMinutes) || DEFAULTS.poopMinMinutes));
   out.poopMaxMinutes = Math.max(out.poopMinMinutes, Math.min(2880, Number(out.poopMaxMinutes) || DEFAULTS.poopMaxMinutes));
   out.runSpeed = Math.max(100, Math.min(1200, Number(out.runSpeed) || DEFAULTS.runSpeed));
+  out.renderMode = out.renderMode === '3d' ? '3d' : '2d';
   return out;
 }
 

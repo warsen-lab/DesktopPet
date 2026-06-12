@@ -31,7 +31,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => openSettingsWindow());
 }
 
+// 3D 模型在屏幕上的近似尺寸（高 140px，与 Renderer3D 的 MODEL_PX_H 保持一致），用于命中/钳制。
+const MODEL_HALF = { w: 80, h: 70 };
+
 function applyManifestSize() {
+  if (settings?.renderMode === '3d') {
+    spriteHalf = { ...MODEL_HALF };
+    if (sim) sim.setHalf(MODEL_HALF.w, MODEL_HALF.h);
+    return;
+  }
   if (!manifest) return;
   let mw = 0, mh = 0;
   for (const s of Object.values(manifest.sets)) { mw = Math.max(mw, s.width); mh = Math.max(mh, s.height); }
@@ -85,7 +93,7 @@ function createWindows() {
 
     const entry = { win, display: d, offsetX: d.bounds.x, offsetY: d.bounds.y };
     win.webContents.on('did-finish-load', () => {
-      win.webContents.send('init', { offsetX: entry.offsetX, offsetY: entry.offsetY, manifest });
+      win.webContents.send('init', { offsetX: entry.offsetX, offsetY: entry.offsetY, manifest, renderMode: settings.renderMode });
       win.webContents.send('poops', poops);
     });
     windows.push(entry);
@@ -141,7 +149,7 @@ function reloadAssets() {
   applyManifestSize();
   for (const w of windows) {
     if (!w.win.isDestroyed()) {
-      w.win.webContents.send('init', { offsetX: w.offsetX, offsetY: w.offsetY, manifest });
+      w.win.webContents.send('init', { offsetX: w.offsetX, offsetY: w.offsetY, manifest, renderMode: settings.renderMode });
     }
   }
   refreshTrayIcon();
@@ -184,14 +192,27 @@ ipcMain.on('drag-start', () => {
 });
 ipcMain.on('drag-end', () => { if (sim) sim.endDrag(); });
 ipcMain.on('clean-poops', cleanPoops);
+// 3D 模型字节：主进程读文件给渲染进程（路径不外漏，渲染进程也碰不到 fs）。
+ipcMain.handle('pet:get-model-data', () => {
+  const p = assets.modelPath();
+  if (!p) return null;
+  try { return require('fs').readFileSync(p); } catch { return null; }
+});
 
 // ——— IPC：设置 / 素材工坊窗口 ———
 ipcMain.handle('ui:get-settings', () => settings);
 ipcMain.handle('ui:save-settings', (_e, s) => {
+  const prevMode = settings.renderMode;
   settings = saveSettings({ ...settings, ...s });
   if (sim) sim.setConfig(toSimConfig(settings));
+  // 渲染模式变了 → 更新命中尺寸并重建覆盖窗口（渲染器在窗口加载时按模式创建）。
+  if (settings.renderMode !== prevMode) {
+    applyManifestSize();
+    createWindows();
+  }
   return settings;
 });
+ipcMain.handle('ui:get-model-status', () => ({ path: assets.modelPath() }));
 ipcMain.handle('ui:get-autolaunch', () => app.getLoginItemSettings().openAtLogin);
 ipcMain.handle('ui:set-autolaunch', (_e, enabled) => {
   app.setLoginItemSettings({ openAtLogin: !!enabled });
@@ -260,6 +281,7 @@ function rebuild() {
 app.whenReady().then(() => {
   settings = loadSettings();
   assets.ensurePetAssets();                 // 首启播种到 userData，已有用户素材绝不覆盖
+  assets.ensureModelAssets();               // 同样播种内置 3D 模型（用户已有 .glb 绝不覆盖）
   manifest = assets.loadSpriteManifest();
   applyManifestSize();
 

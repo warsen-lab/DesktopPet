@@ -18,6 +18,40 @@ function petsDir() {
   return path.join(app.getPath('userData'), 'pets', 'cat');
 }
 
+// 3D 模型目录（用户可替换为自己的 .glb，重扫/重启后生效）。
+function modelDir() {
+  return path.join(app.getPath('userData'), 'pets', 'model');
+}
+
+function bundledModelDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'model')
+    : path.join(__dirname, '..', '..', 'assets', 'model');
+}
+
+function listModels(dir) {
+  try { return fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.glb')); } catch { return []; }
+}
+
+// 首次启动播种内置 3D 模型；用户目录里已有任何 .glb 则绝不覆盖。
+function ensureModelAssets() {
+  const dst = modelDir();
+  if (listModels(dst).length > 0) return false;
+  const src = bundledModelDir();
+  const models = listModels(src);
+  if (!models.length) return false;
+  fs.mkdirSync(dst, { recursive: true });
+  for (const f of models) fs.copyFileSync(path.join(src, f), path.join(dst, f));
+  return true;
+}
+
+// 当前使用的 3D 模型路径（用户目录第一个 .glb），没有返回 null。
+function modelPath() {
+  const dir = modelDir();
+  const models = listModels(dir).sort();
+  return models.length ? path.join(dir, models[0]) : null;
+}
+
 // 应用自带的种子素材目录：打包后在 resources/assets/cat，开发时在项目 assets/cat。
 function bundledDir() {
   return app.isPackaged
@@ -140,4 +174,4 @@ function scaledIcon(targetH) {
 function trayIcon() { return scaledIcon(18); }
 function windowIcon() { return scaledIcon(64); }
 
-module.exports = { petsDir, bundledDir, ensurePetAssets, rebuildManifest, loadSpriteManifest, assetStatus, trayIcon, windowIcon };
+module.exports = { petsDir, bundledDir, ensurePetAssets, rebuildManifest, loadSpriteManifest, assetStatus, trayIcon, windowIcon, modelDir, ensureModelAssets, modelPath };

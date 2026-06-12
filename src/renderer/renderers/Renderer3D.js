@@ -36,7 +36,11 @@ export class Renderer3D extends PetRenderer {
     this.poopMeshes = new Map(); // id → Group
     this.lastAnimTime = 0;
     this.ready = false;
-    this.facingRot = Math.PI / 2; // 模型「面向右」需要的 Y 旋转（按 Tripo 导出朝向 +Z 标定）
+    // 朝向标定（按 cat.glb 实测）：模型本地 +X=鼻尖、yaw=-90° 时正脸朝镜头。
+    // 以「正脸朝镜头」为基准，按 facing 各转 ±turnYaw 到 3/4 侧身——两边都看得到脸，绝不会露出后背。
+    this.faceCamYaw = -Math.PI / 2;
+    this.turnYaw = Math.PI / 3;   // 60°：3/4 侧身，行走方向清晰且能看到脸
+    this.angryIcon = null;        // 拖拽/生气时头顶的「怒气」标记（billboard sprite）
   }
 
   init(canvas, width, height) {
@@ -110,6 +114,16 @@ export class Renderer3D extends PetRenderer {
     this.shadow.position.set(0, 0.02, -0.3);
     this.modelInner.add(this.shadow);   // 阴影不随身体俯仰，挂朝向层
 
+    // 怒气标记：billboard 永远朝镜头，挂在 modelRoot（不随朝向/俯仰转），稳定悬在头顶。
+    this.angryIcon = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._angryIconTexture(), transparent: true, depthTest: false, depthWrite: false
+    }));
+    this.angryIcon.scale.set(0.4, 0.4, 0.4);
+    this.angryIcon.position.set(0, 1.18, 0.2);  // 头顶上方（归一化身高=1，略偏前朝镜头）
+    this.angryIcon.renderOrder = 999;
+    this.angryIcon.visible = false;
+    this.modelRoot.add(this.angryIcon);
+
     // 动画剪辑：有就归类（名字含 walk/run/idle…），没有就准备程序化步态骨骼。
     if (gltf.animations && gltf.animations.length) {
       this.mixer = new THREE.AnimationMixer(obj);
@@ -157,6 +171,36 @@ export class Renderer3D extends PetRenderer {
     this.bones[key] = { node, rest: node.quaternion.clone() };
   }
 
+  // 头顶「怒气」标记贴图（红色 💢 风格的射线），拖拽/生气时挂在头顶（billboard）。
+  _angryIconTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.translate(64, 64);
+    g.strokeStyle = '#ff2d2d';
+    g.lineWidth = 9;
+    g.lineCap = 'round';
+    // 中心小钩 + 四向放射，组成「青筋暴起」的怒气符号。
+    const spoke = (ang, r0, r1) => {
+      const a = ang * Math.PI / 180;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+      g.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+      g.stroke();
+    };
+    // 三段折线构成一个 💢 角，复制四份旋转铺开。
+    for (let q = 0; q < 4; q++) {
+      const base = q * 90 - 45;
+      spoke(base, 14, 40);
+      spoke(base - 22, 16, 34);
+      spoke(base + 22, 16, 34);
+    }
+    g.fillStyle = '#ff2d2d';
+    g.beginPath(); g.arc(0, 0, 7, 0, Math.PI * 2); g.fill();
+    const tex = new THREE.CanvasTexture(c);
+    return tex;
+  }
+
   _shadowTexture() {
     const c = document.createElement('canvas');
     c.width = c.height = 128;
@@ -195,8 +239,19 @@ export class Renderer3D extends PetRenderer {
     // state.y 是宠物中心 → 模型脚底在中心下方半个身位。
     root.position.set(state.x, -(state.y + px / 2), 0);
 
-    // 朝向：facing=1 朝右。再加一点向镜头的偏转，让人看到 3/4 侧身而不是纯剪影。
-    this.modelInner.rotation.y = state.facing * this.facingRot - state.facing * 0.5;
+    // 朝向：从「正脸朝镜头」基准按 facing 转到 3/4 侧身。facing=+1→右前 3/4，facing=-1→左前 3/4。
+    this.modelInner.rotation.y = this.faceCamYaw + state.facing * this.turnYaw;
+
+    // 怒气标记：拖拽 / 落地生气时显示，轻微抖动 + 上下浮动（与 2D 的头顶怒气 icon 呼应）。
+    if (this.angryIcon) {
+      const show = state.state === 'drag' || state.state === 'angry';
+      this.angryIcon.visible = show;
+      if (show) {
+        const t = state.animTime;
+        this.angryIcon.position.x = Math.sin(t * 30) * 0.04;
+        this.angryIcon.position.y = 1.18 + Math.sin(t * 6) * 0.04;
+      }
+    }
 
     const dt = Math.max(0, Math.min(state.animTime - this.lastAnimTime, 0.1));
     this.lastAnimTime = state.animTime;
@@ -231,8 +286,8 @@ export class Renderer3D extends PetRenderer {
 
   // ——— 程序化驱动（模型无动画剪辑时的兜底）———
   // 两层叠加：
-  //  1) 姿势层（阻尼过渡）：stand→端坐、rest→趴卧、poop→蹲姿、其余站立。
-  //     角度都绕「模型横向轴」（_computeBoneAxes 已换算到各骨骼局部空间），正值 = 该部位向身体前方折。
+  //  1) 姿势层（阻尼过渡）：poop→蹲姿，其余（含 stand/rest）→站立。
+  //     该模型骨骼支点太少，端坐/趴卧/侧躺都容易穿模，故除拉屎外一律保持自然站立。
   //  2) 步态层（即时）：行走/奔跑时四肢绕横向轴对角前后摆（walkPhase 随移动距离累加，速度天然同步）。
   _driveProcedural(state) {
     const t = state.animTime;
@@ -240,21 +295,14 @@ export class Renderer3D extends PetRenderer {
     const moving = s === 'walk' || s === 'run';
     const dragging = s === 'drag';
 
-    // 姿势目标（y 单位 = 身高）。符号约定（按本模型两轮实测标定）：
+    // 姿势目标（y 单位 = 身高）。符号约定（按本模型实测标定）：
     //   pitch 正值 = 前躯抬起（后仰）；腿角负值 = 向前折、正值 = 向后摆；head 负值 = 低头。
     const POSES = {
-      // 端坐：前躯上仰、前腿向后补偿仰角保持竖直、后腿前折蜷于身下、微低头。
-      sit: { y: -0.12, pitch: 0.5, bones: { hindLeft: -0.9, hindRight: -0.9, frontLeft: 0.5, frontRight: 0.5, head: -0.35 } },
-      // 趴卧：身体贴地，前腿前折、后腿向身下收（后肢链骨骼朝向与前肢相反，实测 + 才是收拢）。
-      lie: { y: -0.30, pitch: 0, bones: { frontLeft: -0.9, frontRight: -0.9, hindLeft: 0.9, hindRight: 0.9, head: -0.1 } },
       // 蹲姿（拉屎）：后躯下沉前躯微抬，后腿前折。
       squat: { y: -0.14, pitch: 0.28, bones: { hindLeft: -0.6, hindRight: -0.6, frontLeft: 0.28, frontRight: 0.28, head: -0.1 } },
       stand: { y: 0, pitch: 0, bones: {} }
     };
-    const pose = s === 'stand' ? POSES.sit
-      : s === 'rest' ? POSES.lie
-      : s === 'poop' ? POSES.squat
-      : POSES.stand;
+    const pose = s === 'poop' ? POSES.squat : POSES.stand;
 
     // 阻尼系数：姿势切换 ~0.3s 内柔和到位。
     const dt = Math.max(0.001, Math.min(t - (this._lastT ?? t), 0.1));

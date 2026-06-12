@@ -7,7 +7,7 @@ const S = {
   DRAG: 'drag', FALL: 'fall', ANGRY: 'angry', POOP: 'poop'
 };
 
-const COMFORT_RADIUS = 90;
+const COMFORT_RADIUS = 90;      // 进入此范围内就站立不动（贴近鼠标停步）
 const RUN_DISTANCE = 340;
 const WALK_SPEED = 150;
 const DEFAULT_RUN_SPEED = 520;
@@ -174,6 +174,7 @@ class PetSim {
     const dy = cursor.y - this.y;
     const dist = Math.hypot(dx, dy);
     if (dist > COMFORT_RADIUS) {
+      // 走出舒适圈才移动；进入舒适圈一定范围内（else 分支）就站立不动。匀速行走，贴近不减速。
       const speed = dist > RUN_DISTANCE ? this.runSpeed : WALK_SPEED;
       this.state = dist > RUN_DISTANCE ? S.RUN : S.WALK;
       const ux = dx / dist, uy = dy / dist;
